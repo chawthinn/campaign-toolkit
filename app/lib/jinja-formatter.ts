@@ -36,16 +36,34 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Apply a regex only to plain-text chunks, skipping anything inside an HTML tag.
+// This prevents regexes from corrupting class/attribute values after earlier
+// replacements have already inserted <span> elements into the string.
+function onText(
+  html: string,
+  re: RegExp,
+  repl: (...args: string[]) => string,
+): string {
+  return html.replace(/(<[^>]+>|[^<]+)/g, (chunk) =>
+    chunk.startsWith('<') ? chunk : chunk.replace(re, repl),
+  );
+}
+
 function highlightInner(inner: string): string {
   const STRING_RE = /(["'])(?:(?!\1)[^\\]|\\.)*\1/g;
-  const NUM_RE = /\b(\d+(?:\.\d+)?)\b/g;
+  const NUM_RE    = /\b(\d+(?:\.\d+)?)\b/g;
   const FILTER_RE = /\|\s*([a-z_]+)/g;
-  const BLOCK_KW = /\b(if|elif|else|endif|for|endfor|set|block|endblock|extends|include|import|macro|endmacro|call|endcall|filter|endfilter|raw|endraw|with|endwith|without context|scoped|recursive|namespace|not|and|or|in|is|true|false|none|loop)\b/g;
+  // 'filter' and 'endfilter' are in this list — without onText they would
+  // corrupt class="tk-filter" by matching inside the attribute value.
+  const BLOCK_KW  = /\b(if|elif|else|endif|for|endfor|set|block|endblock|extends|include|import|macro|endmacro|call|endcall|filter|endfilter|raw|endraw|with|endwith|without context|scoped|recursive|namespace|not|and|or|in|is|true|false|none|loop)\b/g;
+
   let h = escapeHtml(inner);
+  // STRING_RE is safe to apply first — no HTML tags exist yet.
   h = h.replace(STRING_RE, (m) => `<span class="tk-string">${m}</span>`);
-  h = h.replace(NUM_RE, (_, n) => `<span class="tk-number">${n}</span>`);
-  h = h.replace(FILTER_RE, (_, f) => `| <span class="tk-filter">${f}</span>`);
-  h = h.replace(BLOCK_KW, (m) => `<span class="tk-keyword">${m}</span>`);
+  // All subsequent passes use onText so they never touch HTML attribute values.
+  h = onText(h, NUM_RE,    (_, n) => `<span class="tk-number">${n}</span>`);
+  h = onText(h, FILTER_RE, (_, f) => `| <span class="tk-filter">${f}</span>`);
+  h = onText(h, BLOCK_KW,  (m)    => `<span class="tk-keyword">${m}</span>`);
   return h;
 }
 

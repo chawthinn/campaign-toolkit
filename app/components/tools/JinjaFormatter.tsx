@@ -10,6 +10,7 @@ function minify(text: string): string {
 }
 
 // activeIndex = which hit gets the orange "current match" style; -1 = none
+// Uses inline styles (not CSS classes) so Tailwind preflight can't nuke them
 function applySearchHighlights(html: string, term: string, activeIndex = -1): string {
   if (!term.trim()) return html;
   const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -17,8 +18,11 @@ function applySearchHighlights(html: string, term: string, activeIndex = -1): st
   return html.replace(/(<[^>]+>|[^<]+)/g, (chunk) => {
     if (chunk.startsWith('<')) return chunk;
     return chunk.replace(new RegExp(esc, 'gi'), (m) => {
-      const cls = hitNum++ === activeIndex ? 'search-hit search-hit-active' : 'search-hit';
-      return `<mark class="${cls}">${m}</mark>`;
+      const isActive = hitNum++ === activeIndex;
+      const style = isActive
+        ? 'background:#f97316;color:#fff;border-radius:2px;padding:0 1px'
+        : 'background:rgba(250,204,21,0.6);border-radius:2px;padding:0 1px';
+      return `<span class="search-hit${isActive ? ' search-hit-active' : ''}" style="${style}">${m}</span>`;
     });
   });
 }
