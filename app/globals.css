@@ -190,13 +190,12 @@ textarea.code-area::placeholder {
 .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .search-hit {
-  background: rgba(37, 99, 235, 0.25);
+  background: rgba(250, 204, 21, 0.55);
   border-radius: 2px;
-  outline: 1px solid rgba(37, 99, 235, 0.4);
+  color: inherit;
 }
 .search-hit-active {
-  background: var(--accent);
-  color: #fff;
+  background: #f97316;
+  color: #fff !important;
   border-radius: 2px;
-  outline: none;
 }

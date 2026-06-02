@@ -9,12 +9,17 @@ function minify(text: string): string {
   return text.split('\n').map((s) => s.trim()).filter(Boolean).join(' ');
 }
 
-function applySearchHighlights(html: string, term: string): string {
+// activeIndex = which hit gets the orange "current match" style; -1 = none
+function applySearchHighlights(html: string, term: string, activeIndex = -1): string {
   if (!term.trim()) return html;
   const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let hitNum = 0;
   return html.replace(/(<[^>]+>|[^<]+)/g, (chunk) => {
     if (chunk.startsWith('<')) return chunk;
-    return chunk.replace(new RegExp(esc, 'gi'), (m) => `<mark class="search-hit">${m}</mark>`);
+    return chunk.replace(new RegExp(esc, 'gi'), (m) => {
+      const cls = hitNum++ === activeIndex ? 'search-hit search-hit-active' : 'search-hit';
+      return `<mark class="${cls}">${m}</mark>`;
+    });
   });
 }
 
@@ -29,11 +34,14 @@ export default function JinjaFormatter() {
   const [splitPercent, setSplitPercent] = useState(50);
   const [rawCollapsed, setRawCollapsed] = useState(false);
   const [unsavedWarning, setUnsavedWarning] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const fmtRef = useRef<HTMLDivElement>(null);
   const panelsRef = useRef<HTMLDivElement>(null);
   const exitingRef = useRef(false);
-  // Stores the original HTML so Discard can restore it
-  const originalHtmlRef = useRef('');
+  // Stores plain text on focus so we can detect real changes on blur
+  const originalTextRef = useRef('');
+  // Tracks previous search term so we can reset to match 0 in a single pass
+  const prevSearchRef = useRef('');
 
   function onDividerMouseDown(e: React.MouseEvent) {
     e.preventDefault();
@@ -80,25 +88,47 @@ export default function JinjaFormatter() {
     return (plain.match(new RegExp(esc, 'gi')) || []).length;
   }, [searchTerm, formatted]);
 
-  useEffect(() => { setMatchIndex(0); }, [searchTerm, formatted]);
-
-  // Update div HTML when NOT in edit mode (preserves cursor during editing)
-  useEffect(() => {
-    if (!fmtRef.current || editMode) return;
+  // HTML for display mode — React owns this via dangerouslySetInnerHTML
+  const highlightedHtml = useMemo(() => {
     const base = formatted
       || '<span style="color:var(--text-muted)">Formatted output will appear here...</span>';
-    fmtRef.current.innerHTML = applySearchHighlights(base, searchTerm);
-    const hits = fmtRef.current.querySelectorAll<HTMLElement>('.search-hit');
-    hits.forEach((el, i) => el.classList.toggle('search-hit-active', i === matchIndex));
-    hits[matchIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return applySearchHighlights(base, searchTerm, matchIndex);
+  }, [formatted, searchTerm, matchIndex]);
+
+  // Scroll to active match after React paints the new highlightedHtml
+  useEffect(() => {
+    if (editMode) return;
+
+    const isNewSearch = searchTerm !== prevSearchRef.current;
+    prevSearchRef.current = searchTerm;
+
+    // New search → jump to first match
+    if (isNewSearch && matchIndex !== 0) {
+      setMatchIndex(0);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      const active = fmtRef.current?.querySelector<HTMLElement>('.search-hit-active');
+      active?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
   }, [formatted, searchTerm, matchIndex, editMode]);
 
-  // Triggered by clicking/focusing into the formatted panel
+  // Triggered by clicking into the formatted panel (display mode only)
   function handleFmtFocus() {
     if (!formatted || editMode) return;
-    originalHtmlRef.current = fmtRef.current?.innerHTML ?? '';
+    const scrollTop = fmtRef.current?.scrollTop ?? 0;
+    originalTextRef.current = fmtRef.current?.innerText ?? '';
     setUnsavedWarning(false);
     setEditMode(true);
+    // After React re-renders the contentEditable div, set clean HTML (no search marks) and restore scroll
+    setTimeout(() => {
+      if (fmtRef.current) {
+        fmtRef.current.innerHTML = formatted;
+        fmtRef.current.scrollTop = scrollTop;
+        fmtRef.current.focus();
+      }
+    }, 0);
   }
 
   function saveEdit() {
@@ -117,14 +147,19 @@ export default function JinjaFormatter() {
     exitingRef.current = false;
     setUnsavedWarning(false);
     setEditMode(false);
-    // Restore original content
-    if (fmtRef.current) fmtRef.current.innerHTML = originalHtmlRef.current;
+    // dangerouslySetInnerHTML on the display div automatically restores content
   }
 
-  // Blur: don't auto-save — show the warning bar instead
+  // Blur: only warn if content actually changed; exit silently if nothing was edited
   function handleFormattedBlur() {
     if (!editMode || exitingRef.current) return;
-    setUnsavedWarning(true);
+    const currentText = fmtRef.current?.innerText ?? '';
+    const hasChanges = currentText.trim() !== originalTextRef.current.trim();
+    if (hasChanges) {
+      setUnsavedWarning(true);
+    } else {
+      setEditMode(false); // silent exit — no edits made
+    }
   }
 
   function navigate(dir: 1 | -1) {
@@ -188,13 +223,24 @@ export default function JinjaFormatter() {
       )}
 
       {/* Search bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: '8px', flexShrink: 0 }}>
-        <Search size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px',
+        padding: '7px 12px',
+        background: 'var(--bg-panel)',
+        border: `1.5px solid ${searchFocused ? 'var(--accent)' : 'var(--border)'}`,
+        borderRadius: '8px',
+        flexShrink: 0,
+        boxShadow: searchFocused ? '0 0 0 3px rgba(37,99,235,0.15)' : 'none',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+      }}>
+        <Search size={14} style={{ color: searchFocused ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0, transition: 'color 0.15s' }} />
         <input
           type="text"
           placeholder="Search in formatted output…"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') navigate(e.shiftKey ? -1 : 1);
             if (e.key === 'Escape') setSearchTerm('');
@@ -334,29 +380,43 @@ export default function JinjaFormatter() {
             </div>
           </div>
 
-          {/* Always editable when content exists — clicking in triggers edit mode via onFocus */}
-          <div
-            ref={fmtRef}
-            contentEditable={!!formatted}
-            suppressContentEditableWarning
-            className="mono code-area formatted-pane"
-            style={{
-              flex: 1,
-              overflow: 'auto',
-              padding: '12px',
-              minHeight: 0,
-              outline: 'none',
-              cursor: formatted ? 'text' : 'default',
-              borderTop: editMode ? '2px solid var(--accent)' : '2px solid transparent',
-            }}
-            onFocus={handleFmtFocus}
-            onBlur={editMode ? handleFormattedBlur : undefined}
-            onPaste={editMode ? (e) => {
-              e.preventDefault();
-              const text = e.clipboardData.getData('text/plain');
-              document.execCommand('insertText', false, text);
-            } : undefined}
-          />
+          {/* DISPLAY mode — React owns HTML via dangerouslySetInnerHTML; search highlights always work */}
+          {!editMode && (
+            <div
+              ref={fmtRef}
+              className="mono code-area formatted-pane"
+              style={{
+                flex: 1, overflow: 'auto', padding: '12px', minHeight: 0,
+                outline: 'none',
+                cursor: formatted ? 'text' : 'default',
+                borderTop: '2px solid transparent',
+              }}
+              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+              onClick={formatted ? handleFmtFocus : undefined}
+              tabIndex={formatted ? 0 : -1}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleFmtFocus(); }}
+            />
+          )}
+
+          {/* EDIT mode — contentEditable; HTML set imperatively after mount */}
+          {editMode && (
+            <div
+              ref={fmtRef}
+              contentEditable
+              suppressContentEditableWarning
+              className="mono code-area formatted-pane"
+              style={{
+                flex: 1, overflow: 'auto', padding: '12px', minHeight: 0,
+                outline: 'none', cursor: 'text',
+                borderTop: '2px solid var(--accent)',
+              }}
+              onBlur={handleFormattedBlur}
+              onPaste={(e) => {
+                e.preventDefault();
+                document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+              }}
+            />
+          )}
 
           {/* Unsaved changes warning */}
           {unsavedWarning && (
