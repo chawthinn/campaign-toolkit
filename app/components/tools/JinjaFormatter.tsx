@@ -39,6 +39,12 @@ export default function JinjaFormatter() {
   const [rawCollapsed, setRawCollapsed] = useState(false);
   const [unsavedWarning, setUnsavedWarning] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [copyEdit, setCopyEdit] = useState<{
+    originalQuoted: string;
+    quoteChar: string;
+    value: string;
+    top: number; left: number; width: number; height: number;
+  } | null>(null);
   const fmtRef = useRef<HTMLDivElement>(null);
   const panelsRef = useRef<HTMLDivElement>(null);
   const exitingRef = useRef(false);
@@ -160,6 +166,40 @@ export default function JinjaFormatter() {
         if (fmtRef.current) fmtRef.current.scrollTop = scrollTop;
       });
     }, 0);
+  }
+
+  // Single-click on a green string token → opens overlay copy editor
+  function handleStringClick(e: React.MouseEvent) {
+    const clicked = e.target as HTMLElement;
+    const span = clicked.classList.contains('tk-string')
+      ? clicked
+      : clicked.closest<HTMLElement>('.tk-string');
+
+    if (!span) { handleFmtFocus(e); return; }
+    e.stopPropagation();
+
+    const fullString = span.textContent ?? '';
+    if (fullString.length < 2) return;
+
+    const rect = span.getBoundingClientRect();
+    setCopyEdit({
+      originalQuoted: fullString,
+      quoteChar: fullString[0],
+      value: fullString.slice(1, -1),
+      top: rect.top,
+      left: rect.left,
+      width: Math.max(rect.width, 220),
+      height: rect.height,
+    });
+  }
+
+  function commitCopyEdit(newValue: string) {
+    if (!copyEdit) return;
+    const newQuoted = `${copyEdit.quoteChar}${newValue}${copyEdit.quoteChar}`;
+    setCopyEdit(null);
+    if (newQuoted !== copyEdit.originalQuoted) {
+      setRaw(prev => prev.replace(copyEdit.originalQuoted, newQuoted));
+    }
   }
 
   function saveEdit() {
@@ -423,7 +463,7 @@ export default function JinjaFormatter() {
                 borderTop: '2px solid transparent',
               }}
               dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-              onClick={formatted ? handleFmtFocus : undefined}
+              onClick={formatted ? handleStringClick : undefined}
               tabIndex={formatted ? 0 : -1}
               onKeyDown={(e) => { if (e.key === 'Enter') handleFmtFocus(); }}
             />
@@ -490,6 +530,47 @@ export default function JinjaFormatter() {
         </div>
 
       </div>
+
+      {/* Copy-edit overlay — positioned over the clicked string using fixed coords */}
+      {copyEdit && (
+        <>
+          {/* Backdrop: click outside dismisses without saving */}
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+            onClick={() => setCopyEdit(null)}
+          />
+          <input
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+            defaultValue={copyEdit.value}
+            spellCheck={false}
+            style={{
+              position: 'fixed',
+              top: copyEdit.top - 1,
+              left: copyEdit.left - 4,
+              minWidth: copyEdit.width + 8,
+              height: copyEdit.height + 2,
+              zIndex: 1000,
+              background: 'var(--bg-panel)',
+              border: '2px solid var(--accent)',
+              borderRadius: '4px',
+              color: 'var(--token-string)',
+              fontFamily: '"JetBrains Mono","Fira Code","Cascadia Code",ui-monospace,monospace',
+              fontSize: '12.5px',
+              lineHeight: '1.7',
+              padding: '0 6px',
+              outline: 'none',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter')  { e.preventDefault(); commitCopyEdit((e.target as HTMLInputElement).value); }
+              if (e.key === 'Escape') { setCopyEdit(null); }
+            }}
+            onBlur={(e) => commitCopyEdit(e.target.value)}
+          />
+        </>
+      )}
     </div>
   );
 }

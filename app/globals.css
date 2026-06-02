@@ -64,10 +64,21 @@ body {
 .tk-block   { color: var(--token-block); }
 .tk-var     { color: var(--token-var); }
 .tk-comment { color: var(--token-comment); font-style: italic; }
-.tk-string  { color: var(--token-string); }
 .tk-keyword { color: var(--token-keyword); font-weight: 600; }
 .tk-filter  { color: var(--token-filter); }
 .tk-number  { color: var(--token-number); }
+
+/* String tokens are clickable copy fields */
+.tk-string {
+  color: var(--token-string);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.1s;
+}
+.tk-string:hover {
+  background: rgba(5, 150, 105, 0.12);
+  text-decoration: underline dotted;
+}
 
 /* Shared component styles */
 .panel {

@@ -71,17 +71,26 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Apply a regex only to plain-text chunks, skipping anything inside an HTML tag.
-// This prevents regexes from corrupting class/attribute values after earlier
-// replacements have already inserted <span> elements into the string.
+// Apply a regex only to plain-text chunks that are NOT inside a tk-string span.
+// Skips HTML tags (so attribute values are never corrupted) and also skips
+// text that lives inside <span class="tk-string">…</span> so keywords like
+// `in` / `not` / `is` are never highlighted inside string literals.
 function onText(
   html: string,
   re: RegExp,
   repl: (...args: string[]) => string,
 ): string {
-  return html.replace(/(<[^>]+>|[^<]+)/g, (chunk) =>
-    chunk.startsWith('<') ? chunk : chunk.replace(re, repl),
-  );
+  let inString = false;
+  return html.replace(/(<[^>]+>|[^<]+)/g, (chunk) => {
+    if (chunk.startsWith('<')) {
+      // Track whether we're entering or leaving a tk-string span
+      if (/^<span\b[^>]*\btk-string\b/.test(chunk)) inString = true;
+      else if (chunk === '</span>' && inString) inString = false;
+      return chunk;
+    }
+    // Plain text — only apply the regex when outside a string span
+    return inString ? chunk : chunk.replace(re, repl);
+  });
 }
 
 function highlightInner(inner: string): string {
