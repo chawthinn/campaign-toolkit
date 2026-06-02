@@ -67,6 +67,71 @@ function highlightInner(inner: string): string {
   return h;
 }
 
+// Split `s` at top-level occurrences of `sep`, honouring string literals and
+// bracket nesting so commas inside strings / parens / brackets are ignored.
+function splitTopLevel(s: string, sep: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let inStr: string | null = null;
+  let buf = '';
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      buf += ch;
+      if (ch === '\\' && i + 1 < s.length) {
+        buf += s[++i]; // escaped character — skip ahead
+      } else if (ch === inStr) {
+        inStr = null;
+      }
+    } else if (ch === '"' || ch === "'") {
+      inStr = ch;
+      buf += ch;
+    } else if ('([{'.includes(ch)) {
+      depth++;
+      buf += ch;
+    } else if (')]}'.includes(ch)) {
+      depth--;
+      buf += ch;
+    } else if (ch === sep && depth === 0) {
+      const t = buf.trim();
+      if (t) parts.push(t);
+      buf = '';
+    } else {
+      buf += ch;
+    }
+  }
+  const t = buf.trim();
+  if (t) parts.push(t);
+  return parts;
+}
+
+// If `inner` is a {% set var = { key: val, … } %} block with multiple entries,
+// returns an array of formatted HTML lines; otherwise returns null.
+function tryFormatDictSet(inner: string, indent: number): string[] | null {
+  const clean = inner.replace(/^-\s*/, '').replace(/\s*-$/, '');
+  // Match: set <var> = { <body> }   (var may include dots, e.g. offers.count)
+  const m = clean.match(/^(set\s+[\w.]+\s*=\s*)\{([\s\S]*)\}$/);
+  if (!m) return null;
+
+  const prefix = m[1].trim(); // e.g.  "set en_sl ="
+  const body   = m[2].trim();
+  const pairs  = splitTopLevel(body, ',');
+  if (pairs.length <= 1) return null; // single entry — keep on one line
+
+  const pad  = '  '.repeat(Math.max(0, indent));
+  const ipad = '  '.repeat(Math.max(0, indent + 1));
+
+  return [
+    `${pad}<span class="tk-block">{%</span> ${highlightInner(prefix)} {`,
+    ...pairs.map((p, i) => {
+      const trailing = i < pairs.length - 1 ? ',' : '';
+      return `${ipad}${highlightInner(p)}${trailing}`;
+    }),
+    `${pad}} <span class="tk-block">%}</span>`,
+  ];
+}
+
 const OPENERS = ['if', 'for', 'block', 'macro', 'call', 'filter', 'with', 'raw'];
 const CLOSERS = ['endif', 'endfor', 'endblock', 'endmacro', 'endcall', 'endfilter', 'endwith', 'endraw'];
 const MIDDLES = ['else', 'elif'];
@@ -126,8 +191,14 @@ export function formatJinja(src: string): string {
         indent++;
       } else {
         flush();
-        const pad = '  '.repeat(indent);
-        lines.push(pad + `<span class="tk-block">{%</span> ${highlightInner(inner)} <span class="tk-block">%}</span>`);
+        // Try to expand {% set var = { key: val, … } %} into one line per entry
+        const dictLines = tryFormatDictSet(inner, indent);
+        if (dictLines) {
+          lines.push(...dictLines);
+        } else {
+          const pad = '  '.repeat(indent);
+          lines.push(pad + `<span class="tk-block">{%</span> ${highlightInner(inner)} <span class="tk-block">%}</span>`);
+        }
       }
     }
   }
