@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { Wand2, Copy, Trash2, FileCode, Check } from 'lucide-react';
 import { formatJinja, JINJA_EXAMPLE } from '@/app/lib/jinja-formatter';
+import { recordAnalysis } from '@/app/lib/stats';
 
 export default function JinjaFormatter() {
   const [raw, setRaw] = useState('');
@@ -13,6 +14,7 @@ export default function JinjaFormatter() {
   function handleFormat() {
     if (!raw.trim()) return;
     setFormatted(formatJinja(raw));
+    recordAnalysis();
   }
 
   function handleClear() {

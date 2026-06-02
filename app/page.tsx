@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { FileCode } from 'lucide-react';
 import Sidebar, { Tool } from '@/app/components/Sidebar';
 import Topbar from '@/app/components/Topbar';
+import Footer from '@/app/components/Footer';
 import JinjaFormatter from '@/app/components/tools/JinjaFormatter';
 
 const TOOLS: Tool[] = [
@@ -33,6 +34,8 @@ export default function Home() {
         <main style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
           {TOOL_COMPONENTS[activeTool]}
         </main>
+
+        <Footer />
       </div>
     </div>
   );
