@@ -86,19 +86,19 @@ function onText(
 
 function highlightInner(inner: string): string {
   const STRING_RE = /(["'])(?:(?!\1)[^\\]|\\.)*\1/g;
-  const NUM_RE    = /\b(\d+(?:\.\d+)?)\b/g;
+  const NUM_RE = /\b(\d+(?:\.\d+)?)\b/g;
   const FILTER_RE = /\|\s*([a-z_]+)/g;
   // 'filter' and 'endfilter' are in this list — without onText they would
   // corrupt class="tk-filter" by matching inside the attribute value.
-  const BLOCK_KW  = /\b(if|elif|else|endif|for|endfor|set|block|endblock|extends|include|import|macro|endmacro|call|endcall|filter|endfilter|raw|endraw|with|endwith|without context|scoped|recursive|namespace|not|and|or|in|is|true|false|none|loop)\b/g;
+  const BLOCK_KW = /\b(if|elif|else|endif|for|endfor|set|block|endblock|extends|include|import|macro|endmacro|call|endcall|filter|endfilter|raw|endraw|with|endwith|without context|scoped|recursive|namespace|not|and|or|in|is|true|false|none|loop)\b/g;
 
   let h = escapeHtml(inner);
   // STRING_RE is safe to apply first — no HTML tags exist yet.
   h = h.replace(STRING_RE, (m) => `<span class="tk-string">${m}</span>`);
   // All subsequent passes use onText so they never touch HTML attribute values.
-  h = onText(h, NUM_RE,    (_, n) => `<span class="tk-number">${n}</span>`);
+  h = onText(h, NUM_RE, (_, n) => `<span class="tk-number">${n}</span>`);
   h = onText(h, FILTER_RE, (_, f) => `| <span class="tk-filter">${f}</span>`);
-  h = onText(h, BLOCK_KW,  (m)    => `<span class="tk-keyword">${m}</span>`);
+  h = onText(h, BLOCK_KW, (m) => `<span class="tk-keyword">${m}</span>`);
   return h;
 }
 
@@ -152,7 +152,7 @@ function tryFormatDictSet(inner: string, indent: number): string[] | null {
   if (!setMatch) return null;
 
   const prefix = setMatch[1].trim();
-  const rest   = clean.slice(setMatch[0].length).trim();
+  const rest = clean.slice(setMatch[0].length).trim();
   if (!rest.startsWith('{')) return null;
 
   // Find the MATCHING closing } using bracket-counting so apostrophes /
@@ -178,14 +178,14 @@ function tryFormatDictSet(inner: string, indent: number): string[] | null {
 
   if (dictEnd === -1) return null;
 
-  const body       = rest.slice(1, dictEnd).trim();
+  const body = rest.slice(1, dictEnd).trim();
   const afterClose = rest.slice(dictEnd + 1).trim();
   if (afterClose) return null; // unexpected content after closing }
 
   const pairs = splitTopLevel(body, ',');
   if (pairs.length <= 1) return null;
 
-  const pad  = '  '.repeat(Math.max(0, indent));
+  const pad = '  '.repeat(Math.max(0, indent));
   const ipad = '  '.repeat(Math.max(0, indent + 1));
 
   return [
