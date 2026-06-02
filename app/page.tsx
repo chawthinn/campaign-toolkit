@@ -31,7 +31,7 @@ export default function Home() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
         <Topbar toolLabel={activeLabel} />
 
-        <main style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '20px', minHeight: 0 }}>
           {TOOL_COMPONENTS[activeTool]}
         </main>
 

@@ -81,7 +81,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 0 12px;
+  min-height: 42px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-sidebar);
   font-size: 11px;

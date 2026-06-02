@@ -113,7 +113,7 @@ export default function JinjaFormatter() {
   const fmtLines = formatted ? formatted.split('\n').length : 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '12px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '12px', minHeight: 0 }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -198,7 +198,7 @@ export default function JinjaFormatter() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr', gap: '12px', flex: 1, minHeight: 0 }}>
 
         {/* Raw — single-line blob */}
-        <div className="panel" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+        <div className="panel" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div className="panel-header">
             <span>Raw / Blob</span>
             <span className="badge">{raw.length} chars</span>
@@ -226,7 +226,7 @@ export default function JinjaFormatter() {
         </div>
 
         {/* Formatted — syntax-highlighted display or plain-text edit mode */}
-        <div className="panel" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+        <div className="panel" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div className="panel-header">
             <span>Formatted</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
