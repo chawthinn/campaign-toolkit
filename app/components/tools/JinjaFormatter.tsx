@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { Wand2, Copy, Trash2, FileCode, Check } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Copy, Trash2, FileCode, Check } from 'lucide-react';
 import { formatJinja, JINJA_EXAMPLE } from '@/app/lib/jinja-formatter';
 import { recordAnalysis } from '@/app/lib/stats';
 
@@ -9,12 +9,37 @@ export default function JinjaFormatter() {
   const [raw, setRaw] = useState('');
   const [formatted, setFormatted] = useState('');
   const [copied, setCopied] = useState(false);
+  const [editingFormatted, setEditingFormatted] = useState(false);
   const fmtRef = useRef<HTMLDivElement>(null);
 
-  function handleFormat() {
-    if (!raw.trim()) return;
-    setFormatted(formatJinja(raw));
-    recordAnalysis();
+  // Auto-format raw → formatted (debounced, skipped while user edits formatted panel)
+  useEffect(() => {
+    if (editingFormatted) return;
+    const timer = setTimeout(() => {
+      setFormatted(raw.trim() ? formatJinja(raw) : '');
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [raw, editingFormatted]);
+
+  // Imperatively update the formatted div's HTML so we never reset the cursor mid-edit
+  useEffect(() => {
+    if (!fmtRef.current || editingFormatted) return;
+    fmtRef.current.innerHTML = formatted
+      || '<span style="color:var(--text-muted)">Formatted output will appear here...</span>';
+  }, [formatted, editingFormatted]);
+
+  // Formatted panel edited → push plain text back to raw
+  function handleFormattedInput() {
+    if (!fmtRef.current) return;
+    setRaw(fmtRef.current.innerText);
+  }
+
+  // On blur: re-apply syntax highlighting and record the analysis
+  function handleFormattedBlur() {
+    const text = fmtRef.current?.innerText?.trim() ?? '';
+    setRaw(text);
+    setEditingFormatted(false); // triggers effects above to re-highlight
+    if (text) recordAnalysis();
   }
 
   function handleClear() {
@@ -24,7 +49,7 @@ export default function JinjaFormatter() {
 
   function handleExample() {
     setRaw(JINJA_EXAMPLE);
-    setFormatted(formatJinja(JINJA_EXAMPLE));
+    recordAnalysis();
   }
 
   async function handleCopy() {
@@ -46,7 +71,7 @@ export default function JinjaFormatter() {
             Jinja Formatter
           </h2>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Paste a minified blob → get readable, syntax-highlighted output
+            Paste in either panel — both stay in sync automatically
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -57,10 +82,6 @@ export default function JinjaFormatter() {
           <button className="btn-ghost btn-danger" onClick={handleClear}>
             <Trash2 size={14} />
             Clear
-          </button>
-          <button className="btn-primary" onClick={handleFormat}>
-            <Wand2 size={14} />
-            Format
           </button>
         </div>
       </div>
@@ -77,15 +98,13 @@ export default function JinjaFormatter() {
             className="mono code-area"
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
+            onPaste={() => setTimeout(recordAnalysis, 0)}
             placeholder="Paste your Jinja template blob here..."
             spellCheck={false}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleFormat();
-            }}
             style={{ flex: 1, resize: 'none' }}
           />
           <div className="panel-footer">
-            <span>⌘ + Enter to format</span>
+            <span>Edits sync to formatted automatically</span>
           </div>
         </div>
 
@@ -107,14 +126,16 @@ export default function JinjaFormatter() {
           </div>
           <div
             ref={fmtRef}
+            contentEditable
+            suppressContentEditableWarning
             className="mono code-area formatted-pane"
-            style={{ flex: 1, overflow: 'auto', padding: '12px' }}
-            dangerouslySetInnerHTML={{
-              __html: formatted || '<span style="color:var(--text-muted)">Formatted output will appear here...</span>',
-            }}
+            style={{ flex: 1, overflow: 'auto', padding: '12px', outline: 'none' }}
+            onFocus={() => setEditingFormatted(true)}
+            onInput={handleFormattedInput}
+            onBlur={handleFormattedBlur}
           />
           <div className="panel-footer">
-            {formatted ? 'Ready to copy' : 'Waiting for input'}
+            {formatted ? 'Edits sync to raw automatically' : 'Waiting for input'}
           </div>
         </div>
       </div>
