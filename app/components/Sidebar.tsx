@@ -131,10 +131,11 @@ export default function Sidebar({ tools, activeTool, onSelect }: SidebarProps) {
               <span style={{ flexShrink: 0, display: 'flex' }}>{tool.icon}</span>
               {!collapsed && (
                 <>
-                  <span style={{ flex: 1, textAlign: 'left' }}>{tool.label}</span>
+                  <span style={{ flex: 1, textAlign: 'left', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tool.label}</span>
                   {tool.badge && (
                     <span
                       style={{
+                        flexShrink: 0,
                         fontSize: '9px',
                         fontWeight: 600,
                         padding: '1px 5px',
