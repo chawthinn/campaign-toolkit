@@ -1,23 +1,12 @@
 # campaign-toolkit
 
-A marketer's developer toolkit. Built with Next.js, deployable to Vercel in one click.
+A centralized suite of lightweight utility tools engineered to streamline day-to-day marketing operations and campaign setups. The platform eliminates manual friction by providing instant solutions for common operational bottlenecks, starting with a real-time Jinja template formatter to validate personalization logic.
 
 ## Tools
 
 - **Jinja Formatter** — paste a minified Jinja blob, get syntax-highlighted, indented output
 - More coming soon
 
-## Getting started
+## Try out here
 
-```bash
-npm install
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-## Deploy to Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/chawthinn/campaign-toolkit)
-
-Push to GitHub → import in [vercel.com/new](https://vercel.com/new) → done.
+https://campaign-toolkit-gilt.vercel.app/

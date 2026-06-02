@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Code2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Code2, ChevronLeft, ChevronRight, Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/app/context/ThemeContext';
 
 export interface Tool {
   id: string;
@@ -17,7 +18,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ tools, activeTool, onSelect }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
+  const { theme, toggle } = useTheme();
 
   return (
     <aside
@@ -35,35 +37,17 @@ export default function Sidebar({ tools, activeTool, onSelect }: SidebarProps) {
       {/* Logo area */}
       <div
         style={{
-          padding: collapsed ? '16px 0' : '16px 12px',
+          padding: collapsed ? '12px 0' : '12px 12px',
           borderBottom: '1px solid var(--border)',
           display: 'flex',
+          flexDirection: collapsed ? 'column' : 'row',
           alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'space-between',
-          gap: '8px',
+          gap: collapsed ? '8px' : '6px',
         }}
       >
-        {!collapsed && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div
-              style={{
-                width: '24px',
-                height: '24px',
-                background: 'var(--accent)',
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Code2 size={13} color="#fff" />
-            </div>
-            <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              campaign-toolkit
-            </span>
-          </div>
-        )}
-        {collapsed && (
+        {/* Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div
             style={{
               width: '24px',
@@ -73,11 +57,41 @@ export default function Sidebar({ tools, activeTool, onSelect }: SidebarProps) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
             <Code2 size={13} color="#fff" />
           </div>
-        )}
+          {!collapsed && (
+            <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
+              campaign-toolkit
+            </span>
+          )}
+        </div>
+
+        {/* Theme toggle */}
+        <button
+          onClick={toggle}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '28px',
+            height: '28px',
+            borderRadius: '6px',
+            border: '1px solid var(--border)',
+            background: 'transparent',
+            cursor: 'pointer',
+            color: 'var(--text-secondary)',
+            flexShrink: 0,
+            transition: 'background 0.12s',
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)')}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+        >
+          {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+        </button>
       </div>
 
       {/* Nav */}
