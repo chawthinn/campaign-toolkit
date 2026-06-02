@@ -3,22 +3,57 @@ export interface Token {
   val: string;
 }
 
+// Find the closing token for a Jinja tag while respecting quoted strings.
+// This prevents sequences like "%}" inside a string literal from ending a
+// block token too early.
+function findTagEnd(src: string, from: number, close: string): number {
+  let inStr: string | null = null;
+
+  for (let i = from; i < src.length - 1; i++) {
+    const ch = src[i];
+
+    if (inStr) {
+      if (ch === '\\') {
+        i++; // skip escaped character inside string
+        continue;
+      }
+      if (ch === inStr) {
+        inStr = null;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inStr = ch;
+      continue;
+    }
+
+    if (src[i] === close[0] && src[i + 1] === close[1]) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 export function tokenize(src: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   while (i < src.length) {
     if (src[i] === '{' && src[i + 1] === '#') {
+      // Jinja comments don't have string semantics; use direct close search so
+      // apostrophes in natural language (e.g., "it's") don't swallow the file.
       const end = src.indexOf('#}', i + 2);
       if (end === -1) { tokens.push({ type: 'comment', val: src.slice(i) }); break; }
       tokens.push({ type: 'comment', val: src.slice(i, end + 2) });
       i = end + 2;
     } else if (src[i] === '{' && src[i + 1] === '%') {
-      const end = src.indexOf('%}', i + 2);
+      const end = findTagEnd(src, i + 2, '%}');
       if (end === -1) { tokens.push({ type: 'block', val: src.slice(i) }); break; }
       tokens.push({ type: 'block', val: src.slice(i, end + 2) });
       i = end + 2;
     } else if (src[i] === '{' && src[i + 1] === '{') {
-      const end = src.indexOf('}}', i + 2);
+      const end = findTagEnd(src, i + 2, '}}');
       if (end === -1) { tokens.push({ type: 'var', val: src.slice(i) }); break; }
       tokens.push({ type: 'var', val: src.slice(i, end + 2) });
       i = end + 2;
@@ -109,15 +144,46 @@ function splitTopLevel(s: string, sep: string): string[] {
 // If `inner` is a {% set var = { key: val, … } %} block with multiple entries,
 // returns an array of formatted HTML lines; otherwise returns null.
 function tryFormatDictSet(inner: string, indent: number): string[] | null {
-  const clean = inner.replace(/^-\s*/, '').replace(/\s*-$/, '');
-  // Match: set <var> = { <body> }   (var may include dots, e.g. offers.count)
-  const m = clean.match(/^(set\s+[\w.]+\s*=\s*)\{([\s\S]*)\}$/);
-  if (!m) return null;
+  // Strip whitespace-control dashes then trim
+  const clean = inner.replace(/^-\s*/, '').replace(/\s*-$/, '').trim();
 
-  const prefix = m[1].trim(); // e.g.  "set en_sl ="
-  const body   = m[2].trim();
-  const pairs  = splitTopLevel(body, ',');
-  if (pairs.length <= 1) return null; // single entry — keep on one line
+  // Must start with "set <var> ="
+  const setMatch = clean.match(/^(set\s+[\w.]+\s*=\s*)/);
+  if (!setMatch) return null;
+
+  const prefix = setMatch[1].trim();
+  const rest   = clean.slice(setMatch[0].length).trim();
+  if (!rest.startsWith('{')) return null;
+
+  // Find the MATCHING closing } using bracket-counting so apostrophes /
+  // nested {} / commas inside strings cannot confuse the search.
+  let depth = 0;
+  let dictEnd = -1;
+  let inStr: string | null = null;
+
+  for (let i = 0; i < rest.length; i++) {
+    const ch = rest[i];
+    if (inStr) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === inStr) inStr = null;
+    } else if (ch === '"' || ch === "'") {
+      inStr = ch;
+    } else if (ch === '{' || ch === '[' || ch === '(') {
+      depth++;
+    } else if (ch === '}' || ch === ']' || ch === ')') {
+      depth--;
+      if (depth === 0) { dictEnd = i; break; }
+    }
+  }
+
+  if (dictEnd === -1) return null;
+
+  const body       = rest.slice(1, dictEnd).trim();
+  const afterClose = rest.slice(dictEnd + 1).trim();
+  if (afterClose) return null; // unexpected content after closing }
+
+  const pairs = splitTopLevel(body, ',');
+  if (pairs.length <= 1) return null;
 
   const pad  = '  '.repeat(Math.max(0, indent));
   const ipad = '  '.repeat(Math.max(0, indent + 1));
