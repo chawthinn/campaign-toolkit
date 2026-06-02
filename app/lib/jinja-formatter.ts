@@ -42,10 +42,10 @@ function highlightInner(inner: string): string {
   const FILTER_RE = /\|\s*([a-z_]+)/g;
   const BLOCK_KW = /\b(if|elif|else|endif|for|endfor|set|block|endblock|extends|include|import|macro|endmacro|call|endcall|filter|endfilter|raw|endraw|with|endwith|without context|scoped|recursive|namespace|not|and|or|in|is|true|false|none|loop)\b/g;
   let h = escapeHtml(inner);
-  h = h.replace(STRING_RE, (m) => `<span class="tk-string">\${m}</span>`);
-  h = h.replace(NUM_RE, (_, n) => `<span class="tk-number">\${n}</span>`);
-  h = h.replace(FILTER_RE, (_, f) => `| <span class="tk-filter">\${f}</span>`);
-  h = h.replace(BLOCK_KW, (m) => `<span class="tk-keyword">\${m}</span>`);
+  h = h.replace(STRING_RE, (m) => `<span class="tk-string">${m}</span>`);
+  h = h.replace(NUM_RE, (_, n) => `<span class="tk-number">${n}</span>`);
+  h = h.replace(FILTER_RE, (_, f) => `| <span class="tk-filter">${f}</span>`);
+  h = h.replace(BLOCK_KW, (m) => `<span class="tk-keyword">${m}</span>`);
   return h;
 }
 
@@ -85,10 +85,10 @@ export function formatJinja(src: string): string {
       flush();
       const pad = '  '.repeat(Math.max(0, indent));
       const inner = tok.val.slice(2, -2).trim();
-      lines.push(pad + `<span class="tk-comment">{# \${escapeHtml(inner)} #}</span>`);
+      lines.push(pad + `<span class="tk-comment">{# ${escapeHtml(inner)} #}</span>`);
     } else if (tok.type === 'var') {
       const inner = tok.val.slice(2, -2).trim();
-      currentLine += `<span class="tk-var">{{</span> \${highlightInner(inner)} <span class="tk-var">}}</span>`;
+      currentLine += `<span class="tk-var">{{</span> ${highlightInner(inner)} <span class="tk-var">}}</span>`;
     } else if (tok.type === 'block') {
       const kw = getFirstKeyword(tok.val);
       const inner = tok.val.slice(2, -2).trim();
@@ -96,20 +96,20 @@ export function formatJinja(src: string): string {
         flush();
         indent = Math.max(0, indent - 1);
         const pad = '  '.repeat(indent);
-        lines.push(pad + `<span class="tk-block">{%</span> <span class="tk-keyword">\${escapeHtml(inner)}</span> <span class="tk-block">%}</span>`);
+        lines.push(pad + `<span class="tk-block">{%</span> <span class="tk-keyword">${escapeHtml(inner)}</span> <span class="tk-block">%}</span>`);
       } else if (MIDDLES.includes(kw)) {
         flush();
         const pad = '  '.repeat(Math.max(0, indent - 1));
-        lines.push(pad + `<span class="tk-block">{%</span> \${highlightInner(inner)} <span class="tk-block">%}</span>`);
+        lines.push(pad + `<span class="tk-block">{%</span> ${highlightInner(inner)} <span class="tk-block">%}</span>`);
       } else if (OPENERS.includes(kw)) {
         flush();
         const pad = '  '.repeat(indent);
-        lines.push(pad + `<span class="tk-block">{%</span> \${highlightInner(inner)} <span class="tk-block">%}</span>`);
+        lines.push(pad + `<span class="tk-block">{%</span> ${highlightInner(inner)} <span class="tk-block">%}</span>`);
         indent++;
       } else {
         flush();
         const pad = '  '.repeat(indent);
-        lines.push(pad + `<span class="tk-block">{%</span> \${highlightInner(inner)} <span class="tk-block">%}</span>`);
+        lines.push(pad + `<span class="tk-block">{%</span> ${highlightInner(inner)} <span class="tk-block">%}</span>`);
       }
     }
   }
