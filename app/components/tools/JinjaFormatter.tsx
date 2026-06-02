@@ -5,6 +5,15 @@ import { Copy, Trash2, FileCode, Check } from 'lucide-react';
 import { formatJinja, JINJA_EXAMPLE } from '@/app/lib/jinja-formatter';
 import { recordAnalysis } from '@/app/lib/stats';
 
+// Collapse formatted multi-line back to a single-line blob
+function minify(text: string): string {
+  return text
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
 export default function JinjaFormatter() {
   const [raw, setRaw] = useState('');
   const [formatted, setFormatted] = useState('');
@@ -21,25 +30,25 @@ export default function JinjaFormatter() {
     return () => clearTimeout(timer);
   }, [raw, editingFormatted]);
 
-  // Imperatively update the formatted div's HTML so we never reset the cursor mid-edit
+  // Imperatively update the formatted div's HTML to avoid cursor resets mid-edit
   useEffect(() => {
     if (!fmtRef.current || editingFormatted) return;
     fmtRef.current.innerHTML = formatted
       || '<span style="color:var(--text-muted)">Formatted output will appear here...</span>';
   }, [formatted, editingFormatted]);
 
-  // Formatted panel edited → push plain text back to raw
-  function handleFormattedInput() {
-    if (!fmtRef.current) return;
-    setRaw(fmtRef.current.innerText);
-  }
-
-  // On blur: re-apply syntax highlighting and record the analysis
+  // On blur: minify the formatted content back to a single-line raw blob
   function handleFormattedBlur() {
     const text = fmtRef.current?.innerText?.trim() ?? '';
-    setRaw(text);
-    setEditingFormatted(false); // triggers effects above to re-highlight
-    if (text) recordAnalysis();
+    const blob = minify(text);
+    setRaw(blob);
+    setEditingFormatted(false);
+    if (blob) recordAnalysis();
+  }
+
+  function handleRawChange(value: string) {
+    // Strip any newlines — raw is always a single-line blob
+    setRaw(value.replace(/\n/g, ' '));
   }
 
   function handleClear() {
@@ -48,7 +57,8 @@ export default function JinjaFormatter() {
   }
 
   function handleExample() {
-    setRaw(JINJA_EXAMPLE);
+    // JINJA_EXAMPLE may be multi-line for readability; minify it so raw stays one line
+    setRaw(minify(JINJA_EXAMPLE));
     recordAnalysis();
   }
 
@@ -59,7 +69,6 @@ export default function JinjaFormatter() {
     setTimeout(() => setCopied(false), 1500);
   }
 
-  const rawLines = raw ? raw.split('\n').length : 0;
   const fmtLines = formatted ? formatted.split('\n').length : 0;
 
   return (
@@ -71,7 +80,7 @@ export default function JinjaFormatter() {
             Jinja Formatter
           </h2>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Paste in either panel — both stay in sync automatically
+            Paste a minified blob → get readable, syntax-highlighted output
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -88,27 +97,28 @@ export default function JinjaFormatter() {
 
       {/* Panels */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', flex: 1, minHeight: 0 }}>
-        {/* Raw */}
+        {/* Raw — single-line blob input */}
         <div className="panel" style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="panel-header">
             <span>Raw / Blob</span>
-            <span className="badge">{rawLines} lines · {raw.length} chars</span>
+            <span className="badge">{raw.length} chars</span>
           </div>
           <textarea
             className="mono code-area"
             value={raw}
-            onChange={(e) => setRaw(e.target.value)}
+            onChange={(e) => handleRawChange(e.target.value)}
             onPaste={() => setTimeout(recordAnalysis, 0)}
-            placeholder="Paste your Jinja template blob here..."
+            onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+            placeholder="Paste your single-line Jinja blob here..."
             spellCheck={false}
-            style={{ flex: 1, resize: 'none' }}
+            style={{ flex: 1, resize: 'none', whiteSpace: 'nowrap', overflowX: 'auto', overflowY: 'hidden' }}
           />
           <div className="panel-footer">
-            <span>Edits sync to formatted automatically</span>
+            <span>Single-line blob only · formats automatically</span>
           </div>
         </div>
 
-        {/* Formatted */}
+        {/* Formatted — editable, syncs back to raw as a minified blob on blur */}
         <div className="panel" style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="panel-header">
             <span>Formatted</span>
@@ -131,11 +141,10 @@ export default function JinjaFormatter() {
             className="mono code-area formatted-pane"
             style={{ flex: 1, overflow: 'auto', padding: '12px', outline: 'none' }}
             onFocus={() => setEditingFormatted(true)}
-            onInput={handleFormattedInput}
             onBlur={handleFormattedBlur}
           />
           <div className="panel-footer">
-            {formatted ? 'Edits sync to raw automatically' : 'Waiting for input'}
+            {formatted ? 'Edit here → raw updates as minified blob on blur' : 'Waiting for input'}
           </div>
         </div>
       </div>
