@@ -119,19 +119,46 @@ export default function JinjaFormatter() {
   }, [formatted, searchTerm, matchIndex, editMode]);
 
   // Triggered by clicking into the formatted panel (display mode only)
-  function handleFmtFocus() {
+  function handleFmtFocus(e?: React.MouseEvent) {
     if (!formatted || editMode) return;
     const scrollTop = fmtRef.current?.scrollTop ?? 0;
+    const clickX = e?.clientX;
+    const clickY = e?.clientY;
     originalTextRef.current = fmtRef.current?.innerText ?? '';
     setUnsavedWarning(false);
     setEditMode(true);
-    // After React re-renders the contentEditable div, set clean HTML (no search marks) and restore scroll
+
     setTimeout(() => {
-      if (fmtRef.current) {
-        fmtRef.current.innerHTML = formatted;
-        fmtRef.current.scrollTop = scrollTop;
-        fmtRef.current.focus();
+      if (!fmtRef.current) return;
+      fmtRef.current.innerHTML = formatted;
+      fmtRef.current.scrollTop = scrollTop;
+      fmtRef.current.focus();
+
+      // Place cursor at the exact pixel position where the user clicked
+      if (clickX !== undefined && clickY !== undefined) {
+        let range: Range | null = null;
+        if (document.caretRangeFromPoint) {
+          // Chrome / Safari
+          range = document.caretRangeFromPoint(clickX, clickY);
+        } else if ((document as any).caretPositionFromPoint) {
+          // Firefox
+          const pos = (document as any).caretPositionFromPoint(clickX, clickY);
+          if (pos) {
+            range = document.createRange();
+            range.setStart(pos.offsetNode, pos.offset);
+            range.collapse(true);
+          }
+        }
+        if (range) {
+          window.getSelection()?.removeAllRanges();
+          window.getSelection()?.addRange(range);
+        }
       }
+
+      // Re-lock scroll after the browser tries to scroll the cursor into view
+      requestAnimationFrame(() => {
+        if (fmtRef.current) fmtRef.current.scrollTop = scrollTop;
+      });
     }, 0);
   }
 
