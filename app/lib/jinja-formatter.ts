@@ -54,7 +54,8 @@ const CLOSERS = ['endif', 'endfor', 'endblock', 'endmacro', 'endcall', 'endfilte
 const MIDDLES = ['else', 'elif'];
 
 function getFirstKeyword(val: string): string {
-  return val.slice(2, -2).trim().split(/\s+/)[0];
+  // Strip whitespace-control dashes: {%- ... -%} → inner trim → first word
+  return val.slice(2, -2).trim().replace(/^-\s*/, '').split(/\s+/)[0];
 }
 
 export function formatJinja(src: string): string {

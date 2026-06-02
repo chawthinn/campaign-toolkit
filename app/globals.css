@@ -187,3 +187,15 @@ textarea.code-area::placeholder {
 }
 .icon-btn:hover { background: var(--bg-hover); }
 .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.search-hit {
+  background: rgba(37, 99, 235, 0.25);
+  border-radius: 2px;
+  outline: 1px solid rgba(37, 99, 235, 0.4);
+}
+.search-hit-active {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 2px;
+  outline: none;
+}
