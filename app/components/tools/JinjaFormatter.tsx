@@ -10,7 +10,7 @@ function minify(text: string): string {
 }
 
 // activeIndex = which hit gets the orange "current match" style; -1 = none
-// Uses inline styles (not CSS classes) so Tailwind preflight can't nuke them
+// Uses inline styles so Tailwind preflight can't override them
 function applySearchHighlights(html: string, term: string, activeIndex = -1): string {
   if (!term.trim()) return html;
   const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -31,13 +31,12 @@ export default function JinjaFormatter() {
   const [raw, setRaw] = useState('');
   const [formatted, setFormatted] = useState('');
   const [copied, setCopied] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  const [rawCopied, setRawCopied] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [matchIndex, setMatchIndex] = useState(0);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [splitPercent, setSplitPercent] = useState(50);
   const [rawCollapsed, setRawCollapsed] = useState(false);
-  const [unsavedWarning, setUnsavedWarning] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [copyEdit, setCopyEdit] = useState<{
     originalQuoted: string;
@@ -45,52 +44,45 @@ export default function JinjaFormatter() {
     value: string;
     top: number; left: number; width: number; height: number;
   } | null>(null);
+
   const fmtRef = useRef<HTMLDivElement>(null);
   const panelsRef = useRef<HTMLDivElement>(null);
-  const exitingRef = useRef(false);
-  // Stores plain text on focus so we can detect real changes on blur
-  const originalTextRef = useRef('');
-  // Tracks previous search term so we can reset to match 0 in a single pass
   const prevSearchRef = useRef('');
 
+  // ── Divider drag ───────────────────────────────────────────────────────────
   function onDividerMouseDown(e: React.MouseEvent) {
     e.preventDefault();
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-
     function onMouseMove(ev: MouseEvent) {
       if (!panelsRef.current) return;
       const rect = panelsRef.current.getBoundingClientRect();
-      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
-      setSplitPercent(Math.min(75, Math.max(25, pct)));
+      setSplitPercent(Math.min(75, Math.max(25, ((ev.clientX - rect.left) / rect.width) * 100)));
     }
-
     function onMouseUp() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
     }
-
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
   }
 
-  // Auto-collapse header once content is present
+  // ── Auto-collapse header when content is present ───────────────────────────
   useEffect(() => {
     setHeaderCollapsed(!!raw.trim());
   }, [!!raw.trim()]);
 
-  // Auto-format raw → formatted (debounced, skipped while editing)
+  // ── Auto-format raw → formatted (debounced) ────────────────────────────────
   useEffect(() => {
-    if (editMode) return;
     const timer = setTimeout(() => {
       setFormatted(raw.trim() ? formatJinja(raw) : '');
     }, 150);
     return () => clearTimeout(timer);
-  }, [raw, editMode]);
+  }, [raw]);
 
-  // Count search matches
+  // ── Search ─────────────────────────────────────────────────────────────────
   const matchCount = useMemo(() => {
     if (!searchTerm.trim() || !formatted) return 0;
     const plain = formatted.replace(/<[^>]+>/g, '');
@@ -98,146 +90,66 @@ export default function JinjaFormatter() {
     return (plain.match(new RegExp(esc, 'gi')) || []).length;
   }, [searchTerm, formatted]);
 
-  // HTML for display mode — React owns this via dangerouslySetInnerHTML
   const highlightedHtml = useMemo(() => {
     const base = formatted
       || '<span style="color:var(--text-muted)">Formatted output will appear here...</span>';
     return applySearchHighlights(base, searchTerm, matchIndex);
   }, [formatted, searchTerm, matchIndex]);
 
-  // Scroll to active match after React paints the new highlightedHtml
   useEffect(() => {
-    if (editMode) return;
-
     const isNewSearch = searchTerm !== prevSearchRef.current;
     prevSearchRef.current = searchTerm;
-
-    // New search → jump to first match
-    if (isNewSearch && matchIndex !== 0) {
-      setMatchIndex(0);
-      return;
-    }
-
+    if (isNewSearch && matchIndex !== 0) { setMatchIndex(0); return; }
     requestAnimationFrame(() => {
-      const active = fmtRef.current?.querySelector<HTMLElement>('.search-hit-active');
-      active?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      fmtRef.current?.querySelector<HTMLElement>('.search-hit-active')
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
-  }, [formatted, searchTerm, matchIndex, editMode]);
-
-  // Triggered by clicking into the formatted panel (display mode only)
-  function handleFmtFocus(e?: React.MouseEvent) {
-    if (!formatted || editMode) return;
-    const scrollTop = fmtRef.current?.scrollTop ?? 0;
-    const clickX = e?.clientX;
-    const clickY = e?.clientY;
-    originalTextRef.current = fmtRef.current?.innerText ?? '';
-    setUnsavedWarning(false);
-    setEditMode(true);
-
-    setTimeout(() => {
-      if (!fmtRef.current) return;
-      fmtRef.current.innerHTML = formatted;
-      fmtRef.current.scrollTop = scrollTop;
-      fmtRef.current.focus();
-
-      // Place cursor at the exact pixel position where the user clicked
-      if (clickX !== undefined && clickY !== undefined) {
-        let range: Range | null = null;
-        if (document.caretRangeFromPoint) {
-          // Chrome / Safari
-          range = document.caretRangeFromPoint(clickX, clickY);
-        } else if ((document as any).caretPositionFromPoint) {
-          // Firefox
-          const pos = (document as any).caretPositionFromPoint(clickX, clickY);
-          if (pos) {
-            range = document.createRange();
-            range.setStart(pos.offsetNode, pos.offset);
-            range.collapse(true);
-          }
-        }
-        if (range) {
-          window.getSelection()?.removeAllRanges();
-          window.getSelection()?.addRange(range);
-        }
-      }
-
-      // Re-lock scroll after the browser tries to scroll the cursor into view
-      requestAnimationFrame(() => {
-        if (fmtRef.current) fmtRef.current.scrollTop = scrollTop;
-      });
-    }, 0);
-  }
-
-  // Single-click on a green string token → opens overlay copy editor
-  function handleStringClick(e: React.MouseEvent) {
-    const clicked = e.target as HTMLElement;
-    const span = clicked.classList.contains('tk-string')
-      ? clicked
-      : clicked.closest<HTMLElement>('.tk-string');
-
-    if (!span) { handleFmtFocus(e); return; }
-    e.stopPropagation();
-
-    const fullString = span.textContent ?? '';
-    if (fullString.length < 2) return;
-
-    const rect = span.getBoundingClientRect();
-    setCopyEdit({
-      originalQuoted: fullString,
-      quoteChar: fullString[0],
-      value: fullString.slice(1, -1),
-      top: rect.top,
-      left: rect.left,
-      width: Math.max(rect.width, 220),
-      height: rect.height,
-    });
-  }
-
-  function commitCopyEdit(newValue: string) {
-    if (!copyEdit) return;
-    const newQuoted = `${copyEdit.quoteChar}${newValue}${copyEdit.quoteChar}`;
-    setCopyEdit(null);
-    if (newQuoted !== copyEdit.originalQuoted) {
-      setRaw(prev => prev.replace(copyEdit.originalQuoted, newQuoted));
-    }
-  }
-
-  function saveEdit() {
-    if (exitingRef.current) return;
-    exitingRef.current = true;
-    setTimeout(() => { exitingRef.current = false; }, 100);
-    setUnsavedWarning(false);
-    const text = fmtRef.current?.innerText?.trim() ?? '';
-    const blob = minify(text);
-    setRaw(blob);
-    setEditMode(false);
-    if (blob) recordAnalysis();
-  }
-
-  function discardEdit() {
-    exitingRef.current = false;
-    setUnsavedWarning(false);
-    setEditMode(false);
-    // dangerouslySetInnerHTML on the display div automatically restores content
-  }
-
-  // Blur: only warn if content actually changed; exit silently if nothing was edited
-  function handleFormattedBlur() {
-    if (!editMode || exitingRef.current) return;
-    const currentText = fmtRef.current?.innerText ?? '';
-    const hasChanges = currentText.trim() !== originalTextRef.current.trim();
-    if (hasChanges) {
-      setUnsavedWarning(true);
-    } else {
-      setEditMode(false); // silent exit — no edits made
-    }
-  }
+  }, [formatted, searchTerm, matchIndex]);
 
   function navigate(dir: 1 | -1) {
     if (matchCount === 0) return;
     setMatchIndex((i) => (i + dir + matchCount) % matchCount);
   }
 
+  // ── Inline copy editor ─────────────────────────────────────────────────────
+  function handleStringClick(e: React.MouseEvent) {
+    const clicked = e.target as HTMLElement;
+    const span = clicked.classList.contains('tk-string')
+      ? clicked
+      : clicked.closest<HTMLElement>('.tk-string');
+    if (!span) return; // non-string click — do nothing
+    e.stopPropagation();
+    const fullString = span.textContent ?? '';
+    if (fullString.length < 2) return;
+    const rect = span.getBoundingClientRect();
+    setCopyEdit({
+      originalQuoted: fullString,
+      quoteChar: fullString[0],
+      value: fullString.slice(1, -1),
+      top: rect.top, left: rect.left,
+      width: Math.max(rect.width, 240),
+      height: rect.height,
+    });
+  }
+
+  function commitCopyEdit(newValue: string) {
+    if (!copyEdit) return;
+    const { quoteChar, originalQuoted } = copyEdit;
+    const newQuoted = `${quoteChar}${newValue}${quoteChar}`;
+    setCopyEdit(null);
+    if (newQuoted === originalQuoted) return;
+
+    // Replace in raw using the current value (not functional update) so we can
+    // also compute newRaw here and update formatted immediately — bypassing the
+    // 150 ms debounce. Without this, clicking the same string again within 150 ms
+    // captures the OLD originalQuoted (still shown in formatted) which is no longer
+    // in raw, so the replace silently fails.
+    const newRaw = raw.replace(originalQuoted, newQuoted);
+    setRaw(newRaw);
+    setFormatted(newRaw.trim() ? formatJinja(newRaw) : '');
+  }
+
+  // ── Misc ───────────────────────────────────────────────────────────────────
   function handleRawChange(value: string) {
     setRaw(value.replace(/\n/g, ' '));
   }
@@ -246,14 +158,11 @@ export default function JinjaFormatter() {
     setRaw('');
     setFormatted('');
     setSearchTerm('');
-    setEditMode(false);
-    setUnsavedWarning(false);
-    exitingRef.current = false;
+    setCopyEdit(null);
   }
 
   function handleExample() {
     setRaw(minify(JINJA_EXAMPLE));
-    setEditMode(false);
     recordAnalysis();
   }
 
@@ -289,7 +198,7 @@ export default function JinjaFormatter() {
 
       {!headerCollapsed && (
         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '-4px' }}>
-          Paste a minified blob → readable, syntax-highlighted output · supports MoEngage Jinja2
+          Paste a minified blob → readable output · click any string to edit copy · supports MoEngage Jinja2
         </p>
       )}
 
@@ -299,8 +208,7 @@ export default function JinjaFormatter() {
         padding: '7px 12px',
         background: 'var(--bg-panel)',
         border: `1.5px solid ${searchFocused ? 'var(--accent)' : 'var(--border)'}`,
-        borderRadius: '8px',
-        flexShrink: 0,
+        borderRadius: '8px', flexShrink: 0,
         boxShadow: searchFocused ? '0 0 0 3px rgba(37,99,235,0.15)' : 'none',
         transition: 'border-color 0.15s, box-shadow 0.15s',
       }}>
@@ -334,44 +242,22 @@ export default function JinjaFormatter() {
       <div ref={panelsRef} style={{ display: 'flex', flex: 1, minHeight: 0, gap: 0 }}>
 
         {/* Raw — collapses to a thin strip */}
-        <div
-          className="panel"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: 0,
-            flexBasis: rawCollapsed ? '28px' : `${splitPercent}%`,
-            flexShrink: 0,
-            flexGrow: 0,
-            minWidth: 0,
-            overflow: 'hidden',
-            transition: 'flex-basis 0.2s ease',
-          }}
-        >
+        <div className="panel" style={{
+          display: 'flex', flexDirection: 'column', minHeight: 0,
+          flexBasis: rawCollapsed ? '28px' : `${splitPercent}%`,
+          flexShrink: 0, flexGrow: 0, minWidth: 0,
+          overflow: 'hidden', transition: 'flex-basis 0.2s ease',
+        }}>
           {rawCollapsed ? (
-            /* Collapsed strip — click to expand */
             <button
               onClick={() => setRawCollapsed(false)}
               title="Expand RAW / BLOB panel"
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', width: '100%', height: '100%',
-                border: 'none', background: 'transparent', cursor: 'pointer',
-                gap: '10px', color: 'var(--text-muted)', padding: '12px 0',
-              }}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', border: 'none', background: 'transparent', cursor: 'pointer', gap: '10px', color: 'var(--text-muted)', padding: '12px 0' }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)')}
               onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
             >
               <ChevronRight size={13} />
-              <span style={{
-                writingMode: 'vertical-rl',
-                textOrientation: 'mixed',
-                transform: 'rotate(180deg)',
-                fontSize: '10px',
-                fontWeight: 600,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-              }}>
+              <span style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)', fontSize: '10px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 RAW
               </span>
             </button>
@@ -383,9 +269,17 @@ export default function JinjaFormatter() {
                   <span className="badge">{raw.length} chars</span>
                   <button
                     className="icon-btn"
-                    onClick={() => setRawCollapsed(true)}
-                    title="Collapse RAW panel"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(raw);
+                      setRawCopied(true);
+                      setTimeout(() => setRawCopied(false), 1500);
+                    }}
+                    disabled={!raw}
+                    title="Copy raw blob"
                   >
+                    {rawCopied ? <Check size={12} /> : <Copy size={12} />}
+                  </button>
+                  <button className="icon-btn" onClick={() => setRawCollapsed(true)} title="Collapse RAW panel">
                     <ChevronLeft size={12} />
                   </button>
                 </div>
@@ -405,151 +299,57 @@ export default function JinjaFormatter() {
           )}
         </div>
 
-        {/* Drag divider — hidden when raw is collapsed */}
+        {/* Drag divider */}
         {!rawCollapsed && (
-          <div
-            onMouseDown={onDividerMouseDown}
-            onDoubleClick={() => setSplitPercent(50)}
-            title="Drag to resize · Double-click to reset"
-            style={{ width: '12px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'col-resize', zIndex: 1 }}
-          >
-            <div
-              style={{ width: '3px', height: '36px', borderRadius: '99px', background: 'var(--border)', transition: 'background 0.15s' }}
+          <div onMouseDown={onDividerMouseDown} onDoubleClick={() => setSplitPercent(50)} title="Drag to resize · Double-click to reset"
+            style={{ width: '12px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'col-resize', zIndex: 1 }}>
+            <div style={{ width: '3px', height: '36px', borderRadius: '99px', background: 'var(--border)', transition: 'background 0.15s' }}
               onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--accent)')}
-              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--border)')}
-            />
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--border)')} />
           </div>
         )}
 
-        {/* Formatted — same div for both display and editing */}
+        {/* Formatted — display-only, strings clickable for copy editing */}
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, minWidth: 0 }}>
           <div className="panel-header">
             <span>Formatted</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {fmtLines > 0 && !editMode && <span className="badge">{fmtLines} lines</span>}
-
-              {/* Save button — only visible while editing */}
-              {editMode && (
-                <button
-                  className="btn-primary"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={saveEdit}
-                  style={{ padding: '4px 12px', fontSize: '12px', borderRadius: '6px' }}
-                >
-                  <Check size={12} /> Save
-                </button>
-              )}
-
-              <button
-                className="icon-btn"
-                onClick={handleCopy}
-                disabled={!formatted || editMode}
-                title="Copy formatted"
-              >
+              {fmtLines > 0 && <span className="badge">{fmtLines} lines</span>}
+              <button className="icon-btn" onClick={handleCopy} disabled={!formatted} title="Copy formatted">
                 {copied ? <Check size={13} /> : <Copy size={13} />}
               </button>
             </div>
           </div>
 
-          {/* DISPLAY mode — React owns HTML via dangerouslySetInnerHTML; search highlights always work */}
-          {!editMode && (
-            <div
-              ref={fmtRef}
-              className="mono code-area formatted-pane"
-              style={{
-                flex: 1, overflow: 'auto', padding: '12px', minHeight: 0,
-                outline: 'none',
-                cursor: formatted ? 'text' : 'default',
-                borderTop: '2px solid transparent',
-              }}
-              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-              onClick={formatted ? handleStringClick : undefined}
-              tabIndex={formatted ? 0 : -1}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleFmtFocus(); }}
-            />
-          )}
-
-          {/* EDIT mode — contentEditable; HTML set imperatively after mount */}
-          {editMode && (
-            <div
-              ref={fmtRef}
-              contentEditable
-              suppressContentEditableWarning
-              className="mono code-area formatted-pane"
-              style={{
-                flex: 1, overflow: 'auto', padding: '12px', minHeight: 0,
-                outline: 'none', cursor: 'text',
-                borderTop: '2px solid var(--accent)',
-              }}
-              onBlur={handleFormattedBlur}
-              onPaste={(e) => {
-                e.preventDefault();
-                document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
-              }}
-            />
-          )}
-
-          {/* Unsaved changes warning */}
-          {unsavedWarning && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '8px',
-              padding: '8px 12px',
-              background: 'var(--bg-active)',
-              borderTop: '1px solid #f59e0b',
-            }}>
-              <span style={{ fontSize: '12px', color: '#d97706', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                ⚠ Unsaved changes — click Save or they'll be lost
-              </span>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  className="btn-ghost"
-                  onClick={discardEdit}
-                  style={{ padding: '3px 10px', fontSize: '11px' }}
-                >
-                  Discard
-                </button>
-                <button
-                  className="btn-primary"
-                  onClick={saveEdit}
-                  style={{ padding: '3px 10px', fontSize: '11px', borderRadius: '5px' }}
-                >
-                  <Check size={11} /> Save
-                </button>
-              </div>
-            </div>
-          )}
+          <div
+            ref={fmtRef}
+            className="mono code-area formatted-pane"
+            style={{ flex: 1, overflow: 'auto', padding: '12px', minHeight: 0, outline: 'none' }}
+            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+            onClick={formatted ? handleStringClick : undefined}
+          />
 
           <div className="panel-footer">
-            {editMode
-              ? 'Syntax colours stay live while editing · click Save when done'
-              : formatted ? 'Click ✎ to edit · changes sync back to raw' : 'Waiting for input'}
+            {formatted ? 'Click any string to edit copy · raw updates instantly' : 'Waiting for input'}
           </div>
         </div>
 
       </div>
 
-      {/* Copy-edit overlay — positioned over the clicked string using fixed coords */}
+      {/* Copy-edit overlay — React-controlled, positioned over the clicked string */}
       {copyEdit && (
         <>
-          {/* Backdrop: click outside dismisses without saving */}
-          <div
-            style={{ position: 'fixed', inset: 0, zIndex: 999 }}
-            onClick={() => setCopyEdit(null)}
-          />
+          <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCopyEdit(null)} />
           <input
-            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             defaultValue={copyEdit.value}
             spellCheck={false}
             style={{
               position: 'fixed',
-              top: copyEdit.top - 1,
-              left: copyEdit.left - 4,
-              minWidth: copyEdit.width + 8,
-              height: copyEdit.height + 2,
+              top: copyEdit.top - 2,
+              left: copyEdit.left - 6,
+              minWidth: copyEdit.width + 12,
+              height: copyEdit.height + 4,
               zIndex: 1000,
               background: 'var(--bg-panel)',
               border: '2px solid var(--accent)',
@@ -560,7 +360,7 @@ export default function JinjaFormatter() {
               lineHeight: '1.7',
               padding: '0 6px',
               outline: 'none',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
             }}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
