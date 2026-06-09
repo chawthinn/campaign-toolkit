@@ -65,6 +65,8 @@ export default function JinjaFormatter() {
   const fmtRef = useRef<HTMLDivElement>(null);
   const panelsRef = useRef<HTMLDivElement>(null);
   const prevSearchRef = useRef('');
+  const undoStack = useRef<string[]>(['']);
+  const undoPtr   = useRef(0);
 
   // ── Divider drag ───────────────────────────────────────────────────────────
   function onDividerMouseDown(e: React.MouseEvent) {
@@ -169,11 +171,32 @@ export default function JinjaFormatter() {
   }
 
   // ── Misc ───────────────────────────────────────────────────────────────────
+  function pushUndo(value: string) {
+    const stack = undoStack.current;
+    const ptr   = undoPtr.current;
+    // drop any redo future
+    const next = stack.slice(0, ptr + 1);
+    next.push(value);
+    if (next.length > 100) next.shift();
+    undoStack.current = next;
+    undoPtr.current   = next.length - 1;
+  }
+
+  function applyUndo(dir: 1 | -1) {
+    const next = undoPtr.current + dir;
+    if (next < 0 || next >= undoStack.current.length) return;
+    undoPtr.current = next;
+    setRaw(undoStack.current[next]);
+  }
+
   function handleRawChange(value: string) {
-    setRaw(value.replace(/\n/g, ' '));
+    const cleaned = value.replace(/\n/g, ' ');
+    pushUndo(cleaned);
+    setRaw(cleaned);
   }
 
   function handleClear() {
+    pushUndo('');
     setRaw('');
     setFormatted('');
     setSearchTerm('');
@@ -341,7 +364,11 @@ export default function JinjaFormatter() {
                 value={raw}
                 onChange={(e) => handleRawChange(e.target.value)}
                 onPaste={() => setTimeout(recordAnalysis, 0)}
-                onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); return; }
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); applyUndo(-1); }
+                  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); applyUndo(1); }
+                }}
                 placeholder="Paste your single-line Jinja blob here..."
                 spellCheck={false}
                 style={{ flex: 1, resize: 'none', whiteSpace: 'nowrap', overflowX: 'auto', overflowY: 'hidden', minHeight: 0 }}
