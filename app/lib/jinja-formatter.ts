@@ -211,6 +211,147 @@ const OPENERS = ['if', 'for', 'block', 'macro', 'call', 'filter', 'with', 'raw']
 const CLOSERS = ['endif', 'endfor', 'endblock', 'endmacro', 'endcall', 'endfilter', 'endwith', 'endraw'];
 const MIDDLES = ['else', 'elif'];
 
+// ── Liquid (Braze / Klaviyo / Shopify) ───────────────────────────────────────
+
+const LIQUID_OPENERS = ['if', 'unless', 'for', 'case', 'capture', 'form', 'tablerow', 'paginate', 'raw'];
+const LIQUID_CLOSERS = ['endif', 'endunless', 'endfor', 'endcase', 'endcapture', 'endform', 'endtablerow', 'endpaginate', 'endraw'];
+const LIQUID_MIDDLES = ['else', 'elsif', 'when'];
+
+function highlightLiquidInner(inner: string): string {
+  const STRING_RE = /(["'])(?:(?!\1)[^\\]|\\.)*\1/g;
+  const NUM_RE    = /\b(\d+(?:\.\d+)?)\b/g;
+  const FILTER_RE = /\|\s*([a-z_]+)/g;
+  const KW_RE     = /\b(if|elsif|else|endif|unless|endunless|for|endfor|in|case|when|endcase|assign|capture|endcapture|include|render|layout|section|break|continue|cycle|increment|decrement|limit|offset|reversed|tablerow|endtablerow|paginate|endpaginate|empty|blank|nil|null|true|false|and|or|not|contains|forloop|connected_content|abort_message)\b/g;
+  let h = escapeHtml(inner);
+  h = h.replace(STRING_RE, (m) => `<span class="tk-string">${m}</span>`);
+  h = onText(h, NUM_RE,    (_, n) => `<span class="tk-number">${n}</span>`);
+  h = onText(h, FILTER_RE, (_, f) => `| <span class="tk-filter">${f}</span>`);
+  h = onText(h, KW_RE,     (m)    => `<span class="tk-keyword">${m}</span>`);
+  return h;
+}
+
+export function formatLiquid(src: string): string {
+  const tokens = tokenize(src.trim());
+  let indent = 0;
+  const lines: string[] = [];
+  let currentLine = '';
+  function flush() {
+    if (currentLine !== '') { lines.push('  '.repeat(Math.max(0, indent)) + currentLine); currentLine = ''; }
+  }
+  for (const tok of tokens) {
+    if (tok.type === 'html') {
+      const parts = tok.val.split('\n');
+      for (let pi = 0; pi < parts.length; pi++) {
+        const p = parts[pi];
+        if (pi > 0) flush();
+        if (p.trim()) currentLine += escapeHtml(p);
+        else if (p === '' && pi > 0) flush();
+      }
+    } else if (tok.type === 'comment') {
+      flush();
+      lines.push('  '.repeat(Math.max(0, indent)) + `<span class="tk-comment">{# ${escapeHtml(tok.val.slice(2, -2).trim())} #}</span>`);
+    } else if (tok.type === 'var') {
+      currentLine += `<span class="tk-var">{{</span> ${highlightLiquidInner(tok.val.slice(2, -2).trim())} <span class="tk-var">}}</span>`;
+    } else if (tok.type === 'block') {
+      const kw    = getFirstKeyword(tok.val);
+      const inner = tok.val.slice(2, -2).trim();
+      if (LIQUID_CLOSERS.includes(kw)) {
+        flush(); indent = Math.max(0, indent - 1);
+        lines.push('  '.repeat(indent) + `<span class="tk-block">{%</span> <span class="tk-keyword">${escapeHtml(inner)}</span> <span class="tk-block">%}</span>`);
+      } else if (LIQUID_MIDDLES.includes(kw)) {
+        flush();
+        lines.push('  '.repeat(Math.max(0, indent - 1)) + `<span class="tk-block">{%</span> ${highlightLiquidInner(inner)} <span class="tk-block">%}</span>`);
+      } else if (LIQUID_OPENERS.includes(kw)) {
+        flush();
+        lines.push('  '.repeat(indent) + `<span class="tk-block">{%</span> ${highlightLiquidInner(inner)} <span class="tk-block">%}</span>`);
+        indent++;
+      } else {
+        flush();
+        lines.push('  '.repeat(indent) + `<span class="tk-block">{%</span> ${highlightLiquidInner(inner)} <span class="tk-block">%}</span>`);
+      }
+    }
+  }
+  flush();
+  return lines.join('\n');
+}
+
+// ── AMPscript (SFMC) ─────────────────────────────────────────────────────────
+
+interface AMPToken { type: 'block' | 'inline' | 'text'; val: string }
+
+function tokenizeAMPscript(src: string): AMPToken[] {
+  const tokens: AMPToken[] = [];
+  let i = 0;
+  while (i < src.length) {
+    if (src[i] === '%' && src[i + 1] === '%' && src[i + 2] === '[') {
+      const end = src.indexOf(']%%', i + 3);
+      if (end === -1) { tokens.push({ type: 'block', val: src.slice(i) }); break; }
+      tokens.push({ type: 'block', val: src.slice(i, end + 3) }); i = end + 3;
+    } else if (src[i] === '%' && src[i + 1] === '%' && src[i + 2] === '=') {
+      const end = src.indexOf('=%%', i + 3);
+      if (end === -1) { tokens.push({ type: 'inline', val: src.slice(i) }); break; }
+      tokens.push({ type: 'inline', val: src.slice(i, end + 3) }); i = end + 3;
+    } else {
+      let j = i;
+      while (j < src.length && !(src[j] === '%' && src[j + 1] === '%')) j++;
+      if (j > i) tokens.push({ type: 'text', val: src.slice(i, j) });
+      i = j === i ? i + 1 : j;
+    }
+  }
+  return tokens;
+}
+
+function highlightAMPInner(line: string): string {
+  const KW_RE  = /\b(VAR|SET|IF|ELSEIF|ELSE|ENDIF|FOR|NEXT|DO|UNTIL|AND|OR|NOT|TRUE|FALSE|THEN|TO)\b/gi;
+  const FN_RE  = /\b(AttributeValue|IIF|CONCAT|EMPTY|Format|DateAdd|Now|DateDiff|Lookup|LookupRows|v|Substring|Length|Trim|Upper|Lower|Replace|ProperCase|Row|Field|RowCount)\b/g;
+  const VAR_RE = /(@\w+)/g;
+  const STR_RE = /(["'])(?:(?!\1)[^\\]|\\.)*\1/g;
+  let h = escapeHtml(line);
+  h = h.replace(STR_RE, (m) => `<span class="tk-string">${m}</span>`);
+  h = h.replace(FN_RE,  (m) => `<span class="tk-filter">${m}</span>`);
+  h = h.replace(KW_RE,  (m) => `<span class="tk-keyword">${m}</span>`);
+  h = h.replace(VAR_RE, (m) => `<span class="tk-var">${m}</span>`);
+  return h;
+}
+
+function formatAMPBlock(content: string): string[] {
+  const lines: string[] = [];
+  let indent = 1;
+  const stmts = content.split(/\r?\n/).flatMap((l) => l.trim() ? [l.trim()] : []);
+  for (const stmt of stmts) {
+    if (/^\s*(ENDIF|NEXT|UNTIL)\b/i.test(stmt)) indent = Math.max(1, indent - 1);
+    lines.push('  '.repeat(indent) + highlightAMPInner(stmt));
+    if (/^\s*(IF|FOR|DO)\b/i.test(stmt)) indent++;
+  }
+  return lines;
+}
+
+export function formatAMPscript(src: string): string {
+  const tokens = tokenizeAMPscript(src.trim());
+  const lines: string[] = [];
+  let pendingText = '';
+  function flushText() {
+    if (!pendingText.trim()) { pendingText = ''; return; }
+    pendingText.split('\n').forEach((p) => { if (p.trim()) lines.push(escapeHtml(p.trim())); });
+    pendingText = '';
+  }
+  for (const tok of tokens) {
+    if (tok.type === 'text') {
+      pendingText += tok.val;
+    } else if (tok.type === 'inline') {
+      flushText();
+      lines.push(`<span class="tk-block">%%=</span>${highlightAMPInner(tok.val.slice(3, -3).trim())}<span class="tk-block">=%%</span>`);
+    } else {
+      flushText();
+      lines.push(`<span class="tk-block">%%[</span>`);
+      lines.push(...formatAMPBlock(tok.val.slice(3, -3).trim()));
+      lines.push(`<span class="tk-block">]%%</span>`);
+    }
+  }
+  flushText();
+  return lines.join('\n');
+}
+
 function getFirstKeyword(val: string): string {
   // Strip whitespace-control dashes: {%- ... -%} → inner trim → first word
   return val.slice(2, -2).trim().replace(/^-\s*/, '').split(/\s+/)[0];

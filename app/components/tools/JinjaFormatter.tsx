@@ -2,8 +2,23 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Copy, Trash2, FileCode, Check, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { formatJinja, JINJA_EXAMPLE } from '@/app/lib/jinja-formatter';
+import { formatJinja, formatLiquid, formatAMPscript, JINJA_EXAMPLE } from '@/app/lib/jinja-formatter';
+import { extractStrings } from '@/app/lib/string-extractor';
 import { recordAnalysis } from '@/app/lib/stats';
+
+type Language = 'jinja' | 'liquid' | 'ampscript';
+
+const LANGUAGES: { id: Language; label: string; platform: string }[] = [
+  { id: 'jinja',     label: 'Jinja',     platform: 'MoEngage · Klaviyo' },
+  { id: 'liquid',    label: 'Liquid',    platform: 'Braze · Shopify' },
+  { id: 'ampscript', label: 'AMPscript', platform: 'SFMC' },
+];
+
+function runFormatter(lang: Language, src: string): string {
+  if (lang === 'liquid')    return formatLiquid(src);
+  if (lang === 'ampscript') return formatAMPscript(src);
+  return formatJinja(src);
+}
 
 function minify(text: string): string {
   return text.split('\n').map((s) => s.trim()).filter(Boolean).join(' ');
@@ -28,9 +43,11 @@ function applySearchHighlights(html: string, term: string, activeIndex = -1): st
 }
 
 export default function JinjaFormatter() {
+  const [language, setLanguage] = useState<Language>('jinja');
   const [raw, setRaw] = useState('');
   const [formatted, setFormatted] = useState('');
   const [copied, setCopied] = useState(false);
+  const [copiedString, setCopiedString] = useState<string | null>(null);
   const [rawCopied, setRawCopied] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [matchIndex, setMatchIndex] = useState(0);
@@ -77,10 +94,12 @@ export default function JinjaFormatter() {
   // ── Auto-format raw → formatted (debounced) ────────────────────────────────
   useEffect(() => {
     const timer = setTimeout(() => {
-      setFormatted(raw.trim() ? formatJinja(raw) : '');
+      setFormatted(raw.trim() ? runFormatter(language, raw) : '');
     }, 150);
     return () => clearTimeout(timer);
-  }, [raw]);
+  }, [raw, language]);
+
+  const extractedStrings = useMemo(() => (raw.trim() ? extractStrings(raw) : []), [raw]);
 
   // ── Search ─────────────────────────────────────────────────────────────────
   const matchCount = useMemo(() => {
@@ -146,7 +165,7 @@ export default function JinjaFormatter() {
     // in raw, so the replace silently fails.
     const newRaw = raw.replace(originalQuoted, newQuoted);
     setRaw(newRaw);
-    setFormatted(newRaw.trim() ? formatJinja(newRaw) : '');
+    setFormatted(newRaw.trim() ? runFormatter(language, newRaw) : '');
   }
 
   // ── Misc ───────────────────────────────────────────────────────────────────
@@ -185,11 +204,31 @@ export default function JinjaFormatter() {
           style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-primary)' }}
           title={headerCollapsed ? 'Expand header' : 'Collapse header'}
         >
-          <span style={{ fontSize: '16px', fontWeight: 600 }}>Jinja / Jinja2 Formatter</span>
+          <span style={{ fontSize: '16px', fontWeight: 600 }}>Template Formatter</span>
           {headerCollapsed
             ? <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
             : <ChevronUp size={14} style={{ color: 'var(--text-muted)' }} />}
         </button>
+        {/* Language picker */}
+        <div style={{ display: 'flex', gap: '3px', background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: '8px', padding: '3px' }}>
+          {LANGUAGES.map((lang) => (
+            <button
+              key={lang.id}
+              onClick={() => setLanguage(lang.id)}
+              title={lang.platform}
+              style={{
+                padding: '4px 11px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                fontSize: '12px', fontWeight: 500,
+                background: language === lang.id ? 'var(--accent)' : 'transparent',
+                color: language === lang.id ? '#fff' : 'var(--text-muted)',
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              {lang.label}
+            </button>
+          ))}
+        </div>
+
         <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
           <button className="btn-ghost" onClick={handleExample}><FileCode size={14} /> Load example</button>
           <button className="btn-ghost btn-danger" onClick={handleClear}><Trash2 size={14} /> Clear</button>
@@ -198,7 +237,9 @@ export default function JinjaFormatter() {
 
       {!headerCollapsed && (
         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '-4px' }}>
-          Paste a minified blob → readable output · click any string to edit copy · supports MoEngage Jinja2
+          {language === 'jinja'     && 'Paste a minified blob → readable output · click any string to edit · MoEngage · Klaviyo'}
+          {language === 'liquid'    && 'Paste a minified Liquid blob → readable output · click any string to edit · Braze · Shopify'}
+          {language === 'ampscript' && 'Paste a minified AMPscript blob → readable output · SFMC'}
         </p>
       )}
 
@@ -335,6 +376,45 @@ export default function JinjaFormatter() {
         </div>
 
       </div>
+
+      {/* Strings panel — copyable chips for all quoted strings */}
+      {extractedStrings.length > 0 && (
+        <div style={{ flexShrink: 0, borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
+            Strings · {extractedStrings.length}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {extractedStrings.map((s, i) => (
+              <button
+                key={i}
+                title={`Click to copy: ${s.value}`}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(s.value);
+                  setCopiedString(s.value);
+                  setTimeout(() => setCopiedString(null), 1500);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  padding: '3px 10px 3px 8px',
+                  background: copiedString === s.value ? 'rgba(37,99,235,0.12)' : 'var(--bg-panel)',
+                  border: `1px solid ${copiedString === s.value ? 'var(--accent)' : 'var(--border)'}`,
+                  borderRadius: '99px', cursor: 'pointer',
+                  fontSize: '11.5px', color: 'var(--token-string)',
+                  fontFamily: '"JetBrains Mono","Fira Code",ui-monospace,monospace',
+                  maxWidth: '260px', transition: 'border-color 0.15s, background 0.15s',
+                }}
+              >
+                {copiedString === s.value
+                  ? <Check size={11} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                  : <Copy size={11} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.key ? `${s.key}: ` : ''}{s.value}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Copy-edit overlay — React-controlled, positioned over the clicked string */}
       {copyEdit && (

@@ -9,7 +9,7 @@ import JinjaFormatter from '@/app/components/tools/JinjaFormatter';
 const TOOLS: Tool[] = [
   {
     id: 'jinja-formatter',
-    label: 'Jinja / Jinja2 Formatter',
+    label: 'Template Formatter',
     icon: <FileCode size={15} />,
     badge: 'new',
   },
