@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Copy, Trash2, FileCode, Check, Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { formatJinja, formatLiquid, formatAMPscript, JINJA_EXAMPLE } from '@/app/lib/jinja-formatter';
+import { formatJinja, formatLiquid, formatAMPscript, JINJA_EXAMPLE, LIQUID_EXAMPLE, AMPSCRIPT_EXAMPLE } from '@/app/lib/jinja-formatter';
 import { extractStrings } from '@/app/lib/string-extractor';
 import { recordAnalysis } from '@/app/lib/stats';
 
@@ -181,7 +181,13 @@ export default function JinjaFormatter() {
   }
 
   function handleExample() {
-    setRaw(minify(JINJA_EXAMPLE));
+    const examples: Record<Language, string> = {
+      jinja:     JINJA_EXAMPLE,
+      liquid:    LIQUID_EXAMPLE,
+      ampscript: AMPSCRIPT_EXAMPLE,
+    };
+    setRaw(minify(examples[language]));
+    setCopyEdit(null);
     recordAnalysis();
   }
 
