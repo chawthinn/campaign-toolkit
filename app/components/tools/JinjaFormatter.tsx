@@ -220,7 +220,12 @@ export default function JinjaFormatter() {
           {LANGUAGES.map((lang) => (
             <button
               key={lang.id}
-              onClick={() => setLanguage(lang.id)}
+              onClick={() => {
+                setLanguage(lang.id);
+                const examples: Record<Language, string> = { jinja: JINJA_EXAMPLE, liquid: LIQUID_EXAMPLE, ampscript: AMPSCRIPT_EXAMPLE };
+                setRaw(minify(examples[lang.id]));
+                setCopyEdit(null);
+              }}
               title={lang.platform}
               style={{
                 padding: '4px 11px', borderRadius: '6px', border: 'none', cursor: 'pointer',
