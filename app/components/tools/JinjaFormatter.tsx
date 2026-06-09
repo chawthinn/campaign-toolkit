@@ -166,20 +166,22 @@ export default function JinjaFormatter() {
     // captures the OLD originalQuoted (still shown in formatted) which is no longer
     // in raw, so the replace silently fails.
     const newRaw = raw.replace(originalQuoted, newQuoted);
-    setRaw(newRaw);
+    setRawWithHistory(newRaw);
     setFormatted(newRaw.trim() ? runFormatter(language, newRaw) : '');
   }
 
   // ── Misc ───────────────────────────────────────────────────────────────────
   function pushUndo(value: string) {
-    const stack = undoStack.current;
-    const ptr   = undoPtr.current;
-    // drop any redo future
-    const next = stack.slice(0, ptr + 1);
+    const next = undoStack.current.slice(0, undoPtr.current + 1);
     next.push(value);
     if (next.length > 100) next.shift();
     undoStack.current = next;
     undoPtr.current   = next.length - 1;
+  }
+
+  function setRawWithHistory(value: string) {
+    pushUndo(value);
+    setRaw(value);
   }
 
   function applyUndo(dir: 1 | -1) {
@@ -190,9 +192,7 @@ export default function JinjaFormatter() {
   }
 
   function handleRawChange(value: string) {
-    const cleaned = value.replace(/\n/g, ' ');
-    pushUndo(cleaned);
-    setRaw(cleaned);
+    setRawWithHistory(value.replace(/\n/g, ' '));
   }
 
   function handleClear() {
@@ -209,7 +209,7 @@ export default function JinjaFormatter() {
       liquid:    LIQUID_EXAMPLE,
       ampscript: AMPSCRIPT_EXAMPLE,
     };
-    setRaw(minify(examples[language]));
+    setRawWithHistory(minify(examples[language]));
     setCopyEdit(null);
     recordAnalysis();
   }
@@ -246,7 +246,7 @@ export default function JinjaFormatter() {
               onClick={() => {
                 setLanguage(lang.id);
                 const examples: Record<Language, string> = { jinja: JINJA_EXAMPLE, liquid: LIQUID_EXAMPLE, ampscript: AMPSCRIPT_EXAMPLE };
-                setRaw(minify(examples[lang.id]));
+                setRawWithHistory(minify(examples[lang.id]));
                 setCopyEdit(null);
               }}
               title={lang.platform}
